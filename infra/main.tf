@@ -1,18 +1,4 @@
-provider "aws" {
-  region = "us-east-1"
-}
-# 1. Default VPC and Subnets
-data "aws_vpc" "default" {
-  default = true
-}
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
-# 2. Security Groups
+# 1. Security Groups
 resource "aws_security_group" "alb_sg" {
   name        = "nginx-alb-sg"
   description = "Allow HTTP inbound to ALB"
@@ -47,7 +33,7 @@ resource "aws_security_group" "ecs_tasks_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-# 3. Application Load Balancer & Target Group
+# 2. Application Load Balancer & Target Group
 resource "aws_lb" "main" {
   name               = "nginx-ecs-alb"
   internal           = false
@@ -79,24 +65,13 @@ resource "aws_lb_listener" "front_end" {
     target_group_arn = aws_lb_target_group.app.arn
   }
 }
-# 4. ECS Cluster, Task Definition, and Service
+# 3. ECS Cluster, Task Definition, and Service
 resource "aws_ecs_cluster" "main" {
   name = "nginx-cluster"
 }
 resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/nginx-app"
   retention_in_days = 1
-}
-
-
-variable "ecr_repository_name" {
-  description = "Name of the ECR repository"
-  type        = string
-  default     = "my-repo"
-}
-
-data "aws_ecr_repository" "app" {
-  name = var.ecr_repository_name
 }
 resource "aws_ecs_task_definition" "app" {
   family                   = "nginx-app"
@@ -108,7 +83,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "nginx"
-      image = "${data.aws_ecr_repository.app.repository_url}:latest"
+      image     = "${data.aws_ecr_repository.app.repository_url}:latest"
       essential = true
       portMappings = [
         {
@@ -145,10 +120,13 @@ resource "aws_ecs_service" "main" {
   }
   depends_on = [aws_lb_listener.front_end]
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [
+      desired_count,
+      task_definition
+    ]
   }
 }
-# 5. IAM Roles for ECS Fargate
+# 4. IAM Roles for ECS Fargate
 resource "aws_iam_role" "ecs_execution_role" {
   name = "nginx_ecs_execution_role"
   assume_role_policy = jsonencode({
@@ -189,9 +167,4 @@ resource "aws_appautoscaling_policy" "ecs_policy_cpu" {
     scale_in_cooldown  = 300
     scale_out_cooldown = 60
   }
-}
-# 7. Output
-output "alb_dns_name" {
-  description = "The DNS name of the application load balancer"
-  value       = aws_lb.main.dns_name
 }
