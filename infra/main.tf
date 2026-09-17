@@ -11,6 +11,7 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }
+
 # 2. Security Groups
 resource "aws_security_group" "alb_sg" {
   name        = "nginx-alb-sg"
@@ -86,6 +87,17 @@ resource "aws_cloudwatch_log_group" "ecs" {
   name              = "/ecs/nginx-app"
   retention_in_days = 1
 }
+
+
+variable "ecr_repository_name" {
+  description = "Name of the ECR repository"
+  type        = string
+  default     = "my-repo"
+}
+
+data "aws_ecr_repository" "app" {
+  name = var.ecr_repository_name
+}
 resource "aws_ecs_task_definition" "app" {
   family                   = "nginx-app"
   network_mode             = "awsvpc"
@@ -96,7 +108,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "nginx"
-      image     = "nginx:latest"
+      image = "${data.aws_ecr_repository.app.repository_url}:latest"
       essential = true
       portMappings = [
         {
